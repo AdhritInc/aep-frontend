@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite --host",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit -p tsconfig.app.json"
+    "type-check": "tsc --noEmit -p tsconfig.app.json",
+    "test": "vitest"
   },
   "repository": {
     "type": "git",
@@ -37,6 +38,7 @@
     "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.64.0",
     "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.39.5",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.32.0",
