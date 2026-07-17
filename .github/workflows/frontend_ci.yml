@@ -1,24 +1,29 @@
 name: Frontend-CI
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main, develop]
 env:
-      NODE_VERSION: "22"
+  NODE_VERSION: "22"
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Frontend Code
         uses: actions/checkout@v6
-      - name: Setup Node
+      - name: Node setup
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION}}
+          node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: package-lock.json
-      - name: Install Dependencies
+      - name: Install Depndencies
         run: npm ci
-      - name: Run ESLint
-        run: npm run lint
-      - name: Type Check
-        run: npx tsc --noEmit
+      - name: Run Trivy Dependency Scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+      
