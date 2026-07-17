@@ -39,3 +39,5 @@ jobs:
         run: npm run type-check
       - name: Unit Test
         run: npm test
+      - name: Test Coverage
+        run: npm run coverage
