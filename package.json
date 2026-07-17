@@ -6,7 +6,8 @@
     "dev": "vite --host",
     "lint": "eslint .",
     "type-check": "tsc --noEmit -p tsconfig.app.json",
-    "test": "vitest"
+    "test": "vitest",
+    "coverage": "vitest --coverage"
   },
   "repository": {
     "type": "git",
