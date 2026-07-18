@@ -4,6 +4,8 @@
   "description": "Frontend application for the Adhrit Engineering Platform (AEP).",
   "scripts": {
     "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
     "lint": "eslint .",
     "type-check": "tsc --noEmit -p tsconfig.app.json",
     "test": "vitest",
