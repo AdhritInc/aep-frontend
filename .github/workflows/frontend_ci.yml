@@ -72,3 +72,17 @@ jobs:
           path: |
             dist/
             sbom.json
+      - name: Slack Notification
+        if: always()
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: |
+              *Frontend CI/CD Pipeline*
+              *Repository:* ${{ github.repository }}
+              *Branch:* ${{ github.ref_name }}
+              *Workflow:* ${{ github.workflow }}
+              *Status:* ${{ job.status }}
+              *Commit:* ${{ github.sha }}
