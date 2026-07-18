@@ -41,7 +41,7 @@ jobs:
         run: npm test
       - name: Test Coverage
         run: npm run coverage
-            - name: SonarQube Analysis
+      - name: SonarQube Analysis
         run: |
           npm run sonar -- -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.token=${{ secrets.SONAR_TOKEN }}
 
