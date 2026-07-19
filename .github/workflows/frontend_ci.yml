@@ -106,6 +106,22 @@ jobs:
       - name: Build Production Bundle
         run: npm run build
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://aep-frontend-test --delete
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id E26DT3FZ5K9YI7 \
+            --paths "/*"
+
       ####################################################
       # SBOM
       ####################################################
