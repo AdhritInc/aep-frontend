@@ -1,46 +1,61 @@
 {
   "name": "aep-frontend",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "Frontend application for the Adhrit Engineering Platform (AEP).",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "dev": "vite --host",
+    "build": "vite build",
     "preview": "vite preview",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit -p tsconfig.app.json",
     "test": "vitest",
-"test:run": "vitest run",
-"coverage": "vitest run --coverage"
+    "coverage": "vitest --coverage",
+    "sonar": "sonar-scanner"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AdhritInc/aep-frontend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/AdhritInc/aep-frontend/issues"
+  },
+  "homepage": "https://github.com/AdhritInc/aep-frontend#readme",
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.2",
-    "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
-    "lucide-react": "^1.24.0",
+    "lucide-react": "^1.25.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.1",
-    "recharts": "^3.9.2",
-    "tailwindcss": "^4.3.2"
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^24.13.2",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.64.0",
+    "@typescript-eslint/parser": "^8.64.0",
     "@vitejs/plugin-react": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^10.6.0",
+    "eslint": "^9.39.5",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
-    "globals": "^17.7.0",
     "jsdom": "^29.1.1",
-    "typescript": "~6.0.2",
-    "typescript-eslint": "^8.62.0",
-    "vite": "^8.1.1",
+    "sonar-scanner": "^3.1.0",
+    "sonarqube-scanner": "^4.4.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.64.0",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   }
 }

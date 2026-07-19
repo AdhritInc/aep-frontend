@@ -1,24 +1,182 @@
-name: Frontend-CI
+name: Frontend-CI-CD
+
 on:
   pull_request:
-    branches: [develop, main]
+    branches:
+      - main
+      - develop
+
+  push:
+    branches:
+      - feature/*
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
-      NODE_VERSION: "22"
+  NODE_VERSION: "22"
+
 jobs:
-  lint:
+  frontend-ci:
+    name: Frontend CI/CD Pipeline
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - name: Checkout Frontend Code
+      ####################################################
+      # Checkout
+      ####################################################
+
+      - name: Checkout Repository
         uses: actions/checkout@v6
-      - name: Setup Node
+
+      ####################################################
+      # Node
+      ####################################################
+
+      - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ env.NODE_VERSION}}
-          cache: "npm"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
           cache-dependency-path: package-lock.json
+
       - name: Install Dependencies
         run: npm ci
+
+      ####################################################
+      # Security
+      ####################################################
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=Dependency Scan" >> $GITHUB_ENV
+
+      - name: Run Trivy Dependency Scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+      ####################################################
+      # Code Quality
+      ####################################################
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=ESLint" >> $GITHUB_ENV
+
       - name: Run ESLint
         run: npm run lint
-      - name: Type Check
-        run: npx tsc --noEmit
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=TypeScript Type Check" >> $GITHUB_ENV
+
+      - name: Run TypeScript Type Check
+        run: npm run type-check
+
+      ####################################################
+      # Testing
+      ####################################################
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=Unit Tests & Coverage" >> $GITHUB_ENV
+
+      - name: Run Unit Tests with Coverage
+        run: npm run coverage
+
+      ####################################################
+      # Build
+      ####################################################
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=Build Production Bundle" >> $GITHUB_ENV
+
+      - name: Build Production Bundle
+        run: npm run build
+
+      ####################################################
+      # Deploy (ONLY main branch pushes)
+      ####################################################
+
+      - name: Configure AWS Credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws s3 sync dist/ s3://aep-frontend-test --delete
+
+      - name: Invalidate CloudFront Cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id E26DT3FZ5K9YI7 \
+            --paths "/*"
+
+      ####################################################
+      # SBOM
+      ####################################################
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=Generate SBOM" >> $GITHUB_ENV
+
+      - name: Generate SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: cyclonedx
+          output: sbom.json
+
+      ####################################################
+      # Artifacts
+      ####################################################
+
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=Archive Build Artifacts" >> $GITHUB_ENV
+
+      - name: Archive Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aep-frontend-build
+          path: |
+            dist/
+            sbom.json
+          retention-days: 14
+
+      ####################################################
+      # Slack
+      ####################################################
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v2.1.1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: |
+              🚀 *Frontend CI/CD Pipeline*
+
+              *Repository:* ${{ github.repository }}
+              *Branch:* ${{ github.ref_name }}
+              *Workflow:* ${{ github.workflow }}
+
+              *Status:* ${{ job.status }}
+
+              *Last Stage:* ${{ env.CURRENT_STAGE }}
+
+              *Commit:* ${{ github.sha }}
+
+              *Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

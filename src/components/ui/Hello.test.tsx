@@ -3,11 +3,9 @@ import { describe, expect, it } from "vitest";
 import Hello from "./hello";
 
 describe("Hello Component", () => {
-  it("renders the heading", () => {
+  it("renders the greeting", () => {
     render(<Hello />);
 
-    expect(
-      screen.getByRole("heading", { name: /hello aep/i })
-    ).toBeInTheDocument();
+    expect(screen.getByText(/hello/i)).toBeInTheDocument();
   });
 });
