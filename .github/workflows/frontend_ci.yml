@@ -1,11 +1,6 @@
-name: Frontend-CI-CD
+name: Test OIDC
 
 on:
-  pull_request:
-    branches:
-      - main
-      - develop
-
   push:
     branches:
       - main
@@ -15,195 +10,12 @@ permissions:
   id-token: write
   contents: read
 
-concurrency:
-  group: frontend-ci-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  NODE_VERSION: "22"
-
 jobs:
-  frontend-ci:
-    name: Frontend CI
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
-      ####################################################
-      # Checkout
-      ####################################################
-
-      - name: Checkout Repository
-        uses: actions/checkout@v6
-
-      ####################################################
-      # Node
-      ####################################################
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install Dependencies
-        run: npm ci
-
-      ####################################################
-      # Security
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Dependency Scan" >> $GITHUB_ENV
-
-      - name: Run Trivy Dependency Scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-      ####################################################
-      # Code Quality
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=ESLint" >> $GITHUB_ENV
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=TypeScript Type Check" >> $GITHUB_ENV
-
-      - name: Run TypeScript Type Check
-        run: npm run type-check
-
-      ####################################################
-      # Testing
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Unit Tests & Coverage" >> $GITHUB_ENV
-
-      - name: Run Unit Tests with Coverage
-        run: npm run coverage
-
-      ####################################################
-      # Build
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Build Production Bundle" >> $GITHUB_ENV
-
-      - name: Build Production Bundle
-        run: npm run build
-
-      ####################################################
-      # SBOM
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Generate SBOM" >> $GITHUB_ENV
-
-      - name: Generate SBOM
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: cyclonedx
-          output: sbom.json
-
-      ####################################################
-      # Artifacts
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Archive Build Artifacts" >> $GITHUB_ENV
-
-      - name: Archive Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: aep-frontend-build
-          path: |
-            dist/
-            sbom.json
-          retention-days: 14
-
-      ####################################################
-      # Slack
-      ####################################################
-
-      - name: Notify Slack
-        if: always()
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            text: |
-              🚀 *Frontend CI Pipeline*
-
-              *Repository:* ${{ github.repository }}
-              *Branch:* ${{ github.ref_name }}
-              *Status:* ${{ job.status }}
-
-              *Last Stage:* ${{ env.CURRENT_STAGE }}
-
-              *Commit:* ${{ github.sha }}
-
-              *Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-  frontend-cd:
-    name: Frontend CD
-    needs: frontend-ci
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      ####################################################
-      # Download Artifact
-      ####################################################
-
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aep-frontend-build
-          path: deployment
-
-      - name: Verify Downloaded Artifact
-        run: |
-          echo "Downloaded Artifact:"
-          ls -R deployment
-
-      ####################################################
-# AWS Authentication
-####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Configure AWS Credentials" >> $GITHUB_ENV
-
-      - name: Debug GitHub Variables
-        run: |
-          echo "Repository: ${{ github.repository }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Role ARN: ${{ vars.AWS_ROLE_ARN }}"
-          echo "AWS Region: ${{ vars.AWS_REGION }}"
-          echo "S3 Bucket: ${{ vars.S3_BUCKET }}"
-
-      - name: Debug OIDC Environment
-        run: |
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL"
-
-          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
-            echo "OIDC request token is available."
-          else
-            echo "OIDC request token is NOT available."
-            exit 1
-          fi
+      - uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -211,52 +23,8 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Verify AWS Authentication
-        run: |
-          aws sts get-caller-identity
+      - name: Verify Identity
+        run: aws sts get-caller-identity
 
-      ####################################################
-      # Deploy
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Deploy to S3" >> $GITHUB_ENV
-
-      - name: Deploy Build Artifact to S3
-        run: |
-          aws s3 sync deployment/dist s3://${{ vars.S3_BUCKET }} --delete
-
-      ####################################################
-      # Verify Deployment
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Verify Deployment" >> $GITHUB_ENV
-
-      - name: Verify Deployment
-        run: |
-          aws s3 ls s3://aep-frontend-test/
-          aws s3 ls s3://aep-frontend-test/index.html
-          aws s3 ls s3://aep-frontend-test/assets/ --recursive
-
-      ####################################################
-      # Slack
-      ####################################################
-
-      - name: Notify Slack
-        if: always()
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            text: |
-              🚀 *Frontend CD Pipeline*
-
-              *Repository:* ${{ github.repository }}
-              *Branch:* ${{ github.ref_name }}
-              *Status:* ${{ job.status }}
-
-              *Commit:* ${{ github.sha }}
-
-              *Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Verify Bucket
+        run: aws s3 ls s3://${{ vars.S3_BUCKET }}
