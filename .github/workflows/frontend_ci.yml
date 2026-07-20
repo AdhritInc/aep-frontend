@@ -35,16 +35,16 @@ jobs:
           PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
 
           python3 - <<'PY'
-        import base64, json, os
+          import base64, json, os
 
-        payload = os.environ["PAYLOAD"]
-        payload += "=" * (-len(payload) % 4)
+          payload = os.environ["PAYLOAD"]
+          payload += "=" * (-len(payload) % 4)
 
-        decoded = base64.urlsafe_b64decode(payload)
-        print(json.dumps(json.loads(decoded), indent=2))
-        PY
-          env:
-            PAYLOAD: ${{ env.PAYLOAD }}
+          decoded = base64.urlsafe_b64decode(payload)
+          print(json.dumps(json.loads(decoded), indent=2))
+          PY
+            env:
+              PAYLOAD: ${{ env.PAYLOAD }}
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
