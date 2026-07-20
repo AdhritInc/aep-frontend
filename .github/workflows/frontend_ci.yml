@@ -37,6 +37,7 @@ jobs:
           import json
           import sys
 
+
           token = sys.argv[1]
           payload = token.split(".")[1]
           payload += "=" * (-len(payload) % 4)
