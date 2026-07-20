@@ -180,14 +180,30 @@ jobs:
           ls -R deployment
 
       ####################################################
-      # AWS Authentication
-      ####################################################
+# AWS Authentication
+####################################################
 
       - name: Set Current Stage
         run: echo "CURRENT_STAGE=Configure AWS Credentials" >> $GITHUB_ENV
 
-      - name: Debug OIDC Token Claims
-        uses: github/actions-oidc-debugger@v1
+      - name: Debug GitHub Variables
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Role ARN: ${{ vars.AWS_ROLE_ARN }}"
+          echo "AWS Region: ${{ vars.AWS_REGION }}"
+          echo "S3 Bucket: ${{ vars.S3_BUCKET }}"
+
+      - name: Debug OIDC Environment
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL"
+
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+            echo "OIDC request token is available."
+          else
+            echo "OIDC request token is NOT available."
+            exit 1
+          fi
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
