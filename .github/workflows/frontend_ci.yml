@@ -21,25 +21,24 @@ concurrency:
 
 env:
   NODE_VERSION: "22"
+  IMAGE_NAME: aep-frontend
 
 jobs:
   frontend-ci:
     name: Frontend CI
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       ####################################################
       # Checkout
       ####################################################
-
       - name: Checkout Repository
         uses: actions/checkout@v6
 
       ####################################################
-      # Node
+      # Setup Node
       ####################################################
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -47,71 +46,51 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      ####################################################
+      # Install Dependencies
+      ####################################################
       - name: Install Dependencies
         run: npm ci
 
       ####################################################
-      # Security
+      # ESLint
       ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Dependency Scan" >> $GITHUB_ENV
-
-      - name: Run Trivy Dependency Scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-      ####################################################
-      # Code Quality
-      ####################################################
-
       - name: Set Current Stage
         run: echo "CURRENT_STAGE=ESLint" >> $GITHUB_ENV
 
       - name: Run ESLint
         run: npm run lint
 
+      ####################################################
+      # Type Check
+      ####################################################
       - name: Set Current Stage
-        run: echo "CURRENT_STAGE=TypeScript Type Check" >> $GITHUB_ENV
+        run: echo "CURRENT_STAGE=Type Check" >> $GITHUB_ENV
 
-      - name: Run TypeScript Type Check
+      - name: Run Type Check
         run: npm run type-check
 
       ####################################################
-      # Testing
+      # Unit Tests
       ####################################################
-
       - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Unit Tests & Coverage" >> $GITHUB_ENV
+        run: echo "CURRENT_STAGE=Unit Tests" >> $GITHUB_ENV
 
       - name: Run Unit Tests with Coverage
         run: npm run coverage
 
       ####################################################
-      #  Build
+      # Docker Buildx
       ####################################################
-
-      # - name: Set Current Stage
-      #   run: echo "CURRENT_STAGE=Build Production Bundle" >> $GITHUB_ENV
-
-      # - name: Build Production Bundle
-      #   run: npm run build
-
-      ####################################################
-      #  Build
-      ####################################################
-
       - name: Set Current Stage
         run: echo "CURRENT_STAGE=Setup Docker Buildx" >> $GITHUB_ENV
 
-      - name: Set up Docker Buildx
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      ####################################################
+      # Docker Build
+      ####################################################
       - name: Set Current Stage
         run: echo "CURRENT_STAGE=Build Docker Image" >> $GITHUB_ENV
 
@@ -121,43 +100,123 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: aep-frontend:${{ github.sha }}
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       ####################################################
-      # SBOM
+      # Generate Image SBOM
       ####################################################
-
       - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Generate SBOM" >> $GITHUB_ENV
+        run: echo "CURRENT_STAGE=Generate Image SBOM" >> $GITHUB_ENV
 
-      - name: Generate SBOM
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: cyclonedx
-          output: sbom.json
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate Image SBOM
+        run: |
+          syft ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -o cyclonedx-json=sbom.json
 
       ####################################################
-      # Artifacts
+      # Archive SBOM
       ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Archive Build Artifacts" >> $GITHUB_ENV
-
-      - name: Archive Build Artifacts
+      - name: Archive SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: aep-frontend-build
-          path: |
-            dist/
-            sbom.json
+          name: image-sbom
+          path: sbom.json
           retention-days: 14
 
       ####################################################
-      # Slack
+      # Trivy Image Scan
       ####################################################
+      - name: Set Current Stage
+        run: echo "CURRENT_STAGE=Trivy Image Scan" >> $GITHUB_ENV
 
+      - name: Scan Docker Image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      ####################################################
+      # Configure AWS Credentials
+      ####################################################
+      - name: Set Current Stage
+        if: github.event_name == 'push' && success()
+        run: echo "CURRENT_STAGE=Configure AWS Credentials" >> $GITHUB_ENV
+
+      - name: Configure AWS Credentials
+        if: github.event_name == 'push' && success()
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verify AWS Authentication
+        if: github.event_name == 'push' && success()
+        run: aws sts get-caller-identity
+
+      ####################################################
+      # Login to Amazon ECR
+      ####################################################
+      - name: Set Current Stage
+        if: github.event_name == 'push' && success()
+        run: echo "CURRENT_STAGE=Login to Amazon ECR" >> $GITHUB_ENV
+
+      - name: Login to Amazon ECR
+        if: github.event_name == 'push' && success()
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      ####################################################
+      # Tag Docker Image
+      ####################################################
+      - name: Set Current Stage
+        if: github.event_name == 'push' && success()
+        run: echo "CURRENT_STAGE=Tag Docker Image" >> $GITHUB_ENV
+
+      - name: Tag Docker Image
+        if: github.event_name == 'push' && success()
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${REPOSITORY}:latest
+
+      ####################################################
+      # Push Docker Image
+      ####################################################
+      - name: Set Current Stage
+        if: github.event_name == 'push' && success()
+        run: echo "CURRENT_STAGE=Push Docker Image to Amazon ECR" >> $GITHUB_ENV
+
+      - name: Push Docker Image
+        if: github.event_name == 'push' && success()
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push ${REGISTRY}/${REPOSITORY}:${IMAGE_TAG}
+          docker push ${REGISTRY}/${REPOSITORY}:latest
+
+      ####################################################
+      # Slack Notification
+      ####################################################
       - name: Notify Slack
         if: always()
         uses: slackapi/slack-github-action@v2.1.1
@@ -171,114 +230,7 @@ jobs:
               *Repository:* ${{ github.repository }}
               *Branch:* ${{ github.ref_name }}
               *Status:* ${{ job.status }}
-
               *Last Stage:* ${{ env.CURRENT_STAGE }}
-
               *Commit:* ${{ github.sha }}
 
               *Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-  frontend-cd:
-    name: Frontend CD
-    needs: frontend-ci
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      ####################################################
-      # Download Artifact
-      ####################################################
-
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: aep-frontend-build
-          path: deployment
-
-      - name: Verify Downloaded Artifact
-        run: |
-          echo "Downloaded Artifact:"
-          ls -R deployment
-
-      ####################################################
-      # AWS Authentication
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Configure AWS Credentials" >> $GITHUB_ENV
-
-      - name: Debug GitHub Variables
-        run: |
-          echo "Repository: ${{ github.repository }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Role ARN: ${{ vars.AWS_ROLE_ARN }}"
-          echo "AWS Region: ${{ vars.AWS_REGION }}"
-          echo "S3 Bucket: ${{ vars.S3_BUCKET }}"
-
-      - name: Debug OIDC Environment
-        run: |
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL=$ACTIONS_ID_TOKEN_REQUEST_URL"
-
-          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
-            echo "OIDC request token is available."
-          else
-            echo "OIDC request token is NOT available."
-            exit 1
-          fi
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Verify AWS Authentication
-        run: |
-          aws sts get-caller-identity
-
-      ####################################################
-      # Deploy
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Deploy to S3" >> $GITHUB_ENV
-
-      - name: Deploy Build Artifact to S3
-        run: |
-          aws s3 sync deployment/dist s3://${{ vars.S3_BUCKET }} --delete
-
-      ####################################################
-      # Verify Deployment
-      ####################################################
-
-      - name: Set Current Stage
-        run: echo "CURRENT_STAGE=Verify Deployment" >> $GITHUB_ENV
-
-      - name: Verify Deployment
-        run: |
-          aws s3 ls s3://aep-frontend-test/
-          aws s3 ls s3://aep-frontend-test/index.html
-          aws s3 ls s3://aep-frontend-test/assets/ --recursive
-
-      ####################################################
-      # Slack
-      ####################################################
-
-      - name: Notify Slack
-        if: always()
-        uses: slackapi/slack-github-action@v2.1.1
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            text: |
-              🚀 *Frontend CD Pipeline*
-
-              *Repository:* ${{ github.repository }}
-              *Branch:* ${{ github.ref_name }}
-              *Status:* ${{ job.status }}
-
-              *Commit:* ${{ github.sha }}
-
-              *Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
