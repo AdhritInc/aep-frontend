@@ -215,6 +215,38 @@ jobs:
           docker push ${REGISTRY}/${REPOSITORY}:latest
 
       ####################################################
+      # Render ECS Task Definition
+      ####################################################
+      - name: Set Current Stage
+        if: success()
+        run: echo "CURRENT_STAGE=Render ECS Task Definition" >> $GITHUB_ENV
+
+      - name: Render ECS Task Definition
+        if: success()
+        id: render-task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: .github/ecs/task-definition.json
+          container-name: ${{ vars.ECS_CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+
+      ####################################################
+      # Deploy to Amazon ECS
+      ####################################################
+      - name: Set Current Stage
+        if: success()
+        run: echo "CURRENT_STAGE=Deploy to Amazon ECS" >> $GITHUB_ENV
+
+      - name: Deploy to Amazon ECS
+        if: success()
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-definition.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          wait-for-service-stability: true  
+
+      ####################################################
       # Slack Notification
       ####################################################
       - name: Notify Slack
