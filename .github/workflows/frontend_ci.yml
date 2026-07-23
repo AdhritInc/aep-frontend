@@ -244,7 +244,24 @@ jobs:
           task-definition: ${{ steps.render-task-definition.outputs.task-definition }}
           service: ${{ vars.ECS_SERVICE }}
           cluster: ${{ vars.ECS_CLUSTER }}
-          wait-for-service-stability: true  
+          wait-for-service-stability: true 
+
+      ####################################################
+      # Health Check
+      ####################################################
+      - name: Set Current Stage
+        if: success()
+        run: echo "CURRENT_STAGE=Health Check" >> $GITHUB_ENV
+
+      - name: Wait for Application
+        if: success()
+        run: sleep 30
+
+      - name: Verify Application Health
+        if: success()
+        run: |
+          curl --fail --silent --show-error \
+            ${{ vars.APP_URL }} 
 
       ####################################################
       # Slack Notification
@@ -266,4 +283,3 @@ jobs:
               *Commit:* ${{ github.sha }}
 
               *Run:* ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-              
